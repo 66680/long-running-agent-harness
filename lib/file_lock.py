@@ -167,12 +167,11 @@ class TaskFileLock:
             # 写入临时文件
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
 
-            # 原子替换（Windows 需要先删除目标文件）
-            if sys.platform == "win32" and self.file_path.exists():
-                self.file_path.unlink()
-
-            os.rename(tmp_path, self.file_path)
+            # 原子替换（os.replace 在 Windows 上也是原子的）
+            os.replace(tmp_path, self.file_path)
 
         except Exception:
             # 清理临时文件

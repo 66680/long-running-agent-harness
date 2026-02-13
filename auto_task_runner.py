@@ -43,6 +43,7 @@ DEFAULT_CONFIG = {
     "task_file": "Task.json",
     "progress_file": "progress.txt",
     "claude_md": "CLAUDE.md",
+    "runs_dir": "runs",
     "max_turns": 50,
     "timeout": 900,
     "loop_delay": 3,
@@ -91,6 +92,34 @@ class TaskRunner:
         })
         self.logger = ProgressLogger(config["progress_file"])
         self.runner_id = self.state_machine.generate_runner_id()
+        # 确保 runs 目录存在
+        self.runs_dir = Path(config.get("runs_dir", "runs"))
+        self.runs_dir.mkdir(exist_ok=True)
+
+    def archive_run(self, run_id: str, stdout: str, stderr: str, result: Optional[dict]) -> str:
+        """
+        归档运行输出到 runs/ 目录。
+
+        Args:
+            run_id: 运行 ID
+            stdout: 标准输出
+            stderr: 标准错误
+            result: 解析的结果（可能为 None）
+
+        Returns:
+            归档文件路径
+        """
+        archive_path = self.runs_dir / f"{run_id}.json"
+        archive_data = {
+            "run_id": run_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "stdout": stdout[:50000] if stdout else "",  # 限制大小
+            "stderr": stderr[:10000] if stderr else "",
+            "parsed_result": result,
+        }
+        with open(archive_path, "w", encoding="utf-8") as f:
+            json.dump(archive_data, f, ensure_ascii=False, indent=2)
+        return str(archive_path)
 
     def load_tasks(self) -> dict:
         """加载任务列表（带锁）"""
@@ -312,6 +341,10 @@ class TaskRunner:
                         output = actual_output
                 except json.JSONDecodeError:
                     parsed_result = self.extract_task_result(output)
+
+            # 归档运行输出
+            archive_path = self.archive_run(run_id, output, stderr, parsed_result)
+            log(f"归档到 {archive_path}")
 
             if result.returncode == 0:
                 return True, output, parsed_result
