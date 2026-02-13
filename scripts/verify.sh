@@ -164,6 +164,44 @@ fi
 
 echo ""
 
+# 测试 6: Task.json Schema 校验 (v2.0)
+echo "测试 6: Task.json Schema 校验"
+echo "----------------------------------------"
+
+if [ -n "$PYTHON_CMD" ] && [ -f "scripts/schema_validator.py" ]; then
+    SCHEMA_OUTPUT=$($PYTHON_CMD scripts/schema_validator.py 2>&1)
+    SCHEMA_EXIT=$?
+    if [ $SCHEMA_EXIT -eq 0 ]; then
+        pass "Task.json schema 校验通过"
+    else
+        fail "Task.json schema 校验失败"
+        echo "$SCHEMA_OUTPUT" | head -10
+    fi
+else
+    warn "schema_validator.py 不可用，跳过 schema 校验"
+fi
+
+echo ""
+
+# 测试 7: Secrets 扫描
+echo "测试 7: Secrets 扫描"
+echo "----------------------------------------"
+
+if [ -n "$PYTHON_CMD" ] && [ -f "scripts/secrets_scanner.py" ]; then
+    SECRETS_OUTPUT=$($PYTHON_CMD scripts/secrets_scanner.py 2>&1)
+    SECRETS_EXIT=$?
+    if [ $SECRETS_EXIT -eq 0 ]; then
+        pass "未发现敏感信息泄露"
+    else
+        fail "发现疑似敏感信息"
+        echo "$SECRETS_OUTPUT" | head -10
+    fi
+else
+    warn "secrets_scanner.py 不可用，跳过 secrets 扫描"
+fi
+
+echo ""
+
 # 汇总
 echo "=========================================="
 echo "  验证结果汇总"

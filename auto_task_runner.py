@@ -121,6 +121,78 @@ class TaskRunner:
             json.dump(archive_data, f, ensure_ascii=False, indent=2)
         return str(archive_path)
 
+    def cleanup_runs(self) -> dict:
+        """
+        清理过期的 runs/ 归档。
+
+        根据 config 中的 retention_days 和 max_runs_mb 进行清理。
+
+        Returns:
+            清理统计 {deleted_count, freed_bytes, deleted_files}
+        """
+        retention_days = self.config.get("retention_days", 7)
+        max_runs_mb = self.config.get("max_runs_mb", 100)
+        max_runs_bytes = max_runs_mb * 1024 * 1024
+
+        result = {"deleted_count": 0, "freed_bytes": 0, "deleted_files": []}
+
+        if not self.runs_dir.exists():
+            return result
+
+        # 获取所有 .json 文件及其信息
+        files = []
+        for f in self.runs_dir.glob("*.json"):
+            try:
+                stat = f.stat()
+                files.append({
+                    "path": f,
+                    "name": f.name,
+                    "size": stat.st_size,
+                    "mtime": stat.st_mtime,
+                })
+            except OSError:
+                continue
+
+        if not files:
+            return result
+
+        # 按修改时间排序（最旧的在前）
+        files.sort(key=lambda x: x["mtime"])
+
+        # 计算过期时间阈值
+        now = time.time()
+        retention_seconds = retention_days * 24 * 60 * 60
+        expiry_threshold = now - retention_seconds
+
+        # 第一轮：删除超过 retention_days 的文件
+        remaining_files = []
+        for f in files:
+            if f["mtime"] < expiry_threshold:
+                try:
+                    f["path"].unlink()
+                    result["deleted_count"] += 1
+                    result["freed_bytes"] += f["size"]
+                    result["deleted_files"].append(f["name"])
+                except OSError:
+                    remaining_files.append(f)
+            else:
+                remaining_files.append(f)
+
+        # 第二轮：如果总大小超过 max_runs_mb，删除最旧的
+        total_size = sum(f["size"] for f in remaining_files)
+        while total_size > max_runs_bytes and remaining_files:
+            oldest = remaining_files.pop(0)
+            try:
+                oldest["path"].unlink()
+                result["deleted_count"] += 1
+                result["freed_bytes"] += oldest["size"]
+                result["deleted_files"].append(oldest["name"])
+                total_size -= oldest["size"]
+            except OSError:
+                pass
+
+        return result
+
     def load_tasks(self) -> dict:
         """加载任务列表（带锁）"""
         try:
@@ -665,6 +737,143 @@ class TaskRunner:
         if self.has_blocked_tasks():
             print(f"{Colors.RED}警告: 存在阻塞任务，需要人工介入{Colors.RESET}")
 
+    def generate_status_report(self) -> str:
+        """
+        生成状态看板 status.md。
+
+        Returns:
+            生成的文件路径
+        """
+        data = self.load_tasks()
+        tasks = data.get("tasks", [])
+        config = data.get("config", {})
+
+        # 统计任务状态
+        stats = {}
+        blocked_tasks = []
+        for task in tasks:
+            status = task.get("status", "unknown")
+            stats[status] = stats.get(status, 0) + 1
+            if status == "blocked":
+                blocked_tasks.append(task)
+
+        # 获取最近 10 次 runs
+        recent_runs = []
+        if self.runs_dir.exists():
+            run_files = sorted(
+                self.runs_dir.glob("*.json"),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True
+            )[:10]
+            for f in run_files:
+                try:
+                    with open(f, "r", encoding="utf-8") as rf:
+                        run_data = json.load(rf)
+                        recent_runs.append({
+                            "run_id": run_data.get("run_id", f.stem),
+                            "timestamp": run_data.get("timestamp", ""),
+                            "result": run_data.get("parsed_result", {}),
+                        })
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+        # 计算 runs/ 磁盘占用
+        runs_size = 0
+        runs_count = 0
+        if self.runs_dir.exists():
+            for f in self.runs_dir.glob("*.json"):
+                try:
+                    runs_size += f.stat().st_size
+                    runs_count += 1
+                except OSError:
+                    pass
+
+        # 生成 Markdown
+        now = datetime.now(timezone.utc).isoformat()
+        content = f"""# 状态看板
+
+生成时间: {now}
+
+## 任务统计
+
+| 状态 | 数量 |
+|------|------|
+"""
+        for status in ["pending", "in_progress", "completed", "failed", "blocked", "abandoned"]:
+            count = stats.get(status, 0)
+            content += f"| {status} | {count} |\n"
+        content += f"| **总计** | **{len(tasks)}** |\n"
+
+        # Blocked 任务列表
+        if blocked_tasks:
+            content += "\n## 阻塞任务\n\n"
+            for task in blocked_tasks:
+                content += f"- **{task['id']}**: {task.get('description', '')[:50]}...\n"
+                content += f"  - Notes: {task.get('notes', 'N/A')}\n"
+                content += f"  - 查看 progress.txt 获取 Human Help Packet\n"
+
+        # 最近 runs
+        if recent_runs:
+            content += "\n## 最近运行\n\n"
+            content += "| run_id | 时间 | 状态 |\n"
+            content += "|--------|------|------|\n"
+            for run in recent_runs:
+                result = run.get("result") or {}
+                status = result.get("status", "unknown")
+                ts = run.get("timestamp", "")[:19]
+                content += f"| {run['run_id'][:30]}... | {ts} | {status} |\n"
+
+        # 磁盘占用
+        content += f"\n## runs/ 磁盘占用\n\n"
+        content += f"- 文件数: {runs_count}\n"
+        content += f"- 总大小: {runs_size / 1024:.2f} KB\n"
+        content += f"- 保留天数: {config.get('retention_days', 7)}\n"
+        content += f"- 最大容量: {config.get('max_runs_mb', 100)} MB\n"
+
+        # 写入文件
+        status_path = Path("status.md")
+        with open(status_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        return str(status_path)
+
+    def update_alert(self, alert_type: str, task_id: str, message: str) -> str:
+        """
+        更新告警文件 ALERT.txt。
+
+        Args:
+            alert_type: 告警类型 (blocked, max_failures)
+            task_id: 相关任务 ID
+            message: 告警消息
+
+        Returns:
+            告警文件路径
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        alert_path = Path("ALERT.txt")
+
+        content = f"""ALERT: {alert_type}
+时间: {now}
+任务: {task_id}
+消息: {message}
+
+建议操作:
+1. 检查 progress.txt 获取详细信息
+2. 检查 Task.json 中的任务状态
+3. 解决问题后删除此文件
+"""
+
+        with open(alert_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        return str(alert_path)
+
+    def clear_alert(self) -> None:
+        """清除告警文件。"""
+        alert_path = Path("ALERT.txt")
+        if alert_path.exists():
+            alert_path.unlink()
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -678,6 +887,8 @@ def main():
   python auto_task_runner.py --status     # 查看当前状态
   python auto_task_runner.py --dry-run    # 只显示下一个任务
   python auto_task_runner.py --reclaim    # 回收过期租约
+  python auto_task_runner.py --cleanup    # 清理过期 runs/ 归档
+  python auto_task_runner.py --report     # 生成状态看板 status.md
 
 停止/暂停:
   touch STOP                              # 立即停止
@@ -695,6 +906,10 @@ def main():
                         help="只显示下一个任务，不实际执行")
     parser.add_argument("--reclaim", action="store_true",
                         help="回收过期租约")
+    parser.add_argument("--cleanup", action="store_true",
+                        help="清理过期 runs/ 归档")
+    parser.add_argument("--report", action="store_true",
+                        help="生成状态看板 status.md")
     parser.add_argument("--max-turns", type=int, default=DEFAULT_CONFIG["max_turns"],
                         help=f"Claude 最大轮次 (默认: {DEFAULT_CONFIG['max_turns']})")
     parser.add_argument("--timeout", type=int, default=DEFAULT_CONFIG["timeout"],
@@ -710,6 +925,16 @@ def main():
     config["timeout"] = args.timeout
     config["lease_ttl_seconds"] = args.lease_ttl
 
+    # 从 Task.json 加载额外配置
+    try:
+        with open(config["task_file"], "r", encoding="utf-8") as f:
+            task_data = json.load(f)
+            task_config = task_data.get("config", {})
+            config["retention_days"] = task_config.get("retention_days", 7)
+            config["max_runs_mb"] = task_config.get("max_runs_mb", 100)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
     runner = TaskRunner(config)
 
     if args.status:
@@ -717,6 +942,18 @@ def main():
     elif args.reclaim:
         reclaimed = runner.reclaim_expired_leases()
         log(f"回收了 {reclaimed} 个过期租约", "OK" if reclaimed > 0 else "INFO")
+    elif args.cleanup:
+        result = runner.cleanup_runs()
+        if result["deleted_count"] > 0:
+            freed_mb = result["freed_bytes"] / (1024 * 1024)
+            log(f"清理了 {result['deleted_count']} 个归档，释放 {freed_mb:.2f} MB", "OK")
+            for f in result["deleted_files"]:
+                log(f"  删除: {f}", "INFO")
+        else:
+            log("无需清理", "INFO")
+    elif args.report:
+        report_path = runner.generate_status_report()
+        log(f"状态看板已生成: {report_path}", "OK")
     elif args.dry_run:
         runner.execute_one_task(dry_run=True)
     elif args.loop:

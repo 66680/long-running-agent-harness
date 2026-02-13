@@ -379,3 +379,44 @@ python auto_task_runner.py --reclaim
 4. 输出结果 JSON
 
 父进程会验证 verify.exit_code，如果不为 0 则拒绝 completed 状态。
+
+---
+
+## 安全护栏
+
+### 禁止操作
+
+以下操作在任何情况下都不允许执行：
+
+| 操作 | 原因 |
+|------|------|
+| `rm -rf /` 或 `rm -rf ~` | 系统级破坏 |
+| 修改 `/etc/`, `/usr/`, `/bin/` | 系统文件 |
+| 访问 `~/.ssh/`, `~/.gnupg/` | 敏感凭证 |
+| 执行 `curl | bash` 或 `wget | sh` | 远程代码执行 |
+| 修改 `.git/config` 中的 remote | 防止仓库劫持 |
+| 使用 `--force` 推送到 main/master | 防止历史覆盖 |
+
+### 路径边界
+
+子进程只能在以下范围内操作：
+
+- **可写**：当前工作目录及其子目录
+- **可读**：当前工作目录、`~/.claude/`、系统 PATH 中的工具
+- **禁止**：工作目录外的任何写操作
+
+### 敏感信息处理
+
+- 不在日志中输出完整的 API Key、Token、密码
+- 不将敏感信息写入 progress.txt 或 runs/*.json
+- 发现疑似泄露时，verify.sh 会拦截并报错
+
+### 危险命令检测
+
+以下命令会触发警告（但不阻止）：
+
+- `git reset --hard`
+- `git clean -fd`
+- `DROP TABLE`, `DELETE FROM` (无 WHERE)
+- `chmod 777`
+- `sudo` 或 `su`

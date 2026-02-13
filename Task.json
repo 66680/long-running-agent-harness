@@ -1,10 +1,12 @@
 {
   "version": "2.0",
-  "last_modified": "2026-02-13T08:20:55.448035+00:00",
+  "last_modified": "2026-02-13T08:32:31.342636+00:00",
   "config": {
     "lease_ttl_seconds": 900,
     "max_attempts": 3,
-    "verify_required": true
+    "verify_required": true,
+    "retention_days": 7,
+    "max_runs_mb": 100
   },
   "tasks": [
     {
@@ -229,6 +231,35 @@
         }
       ],
       "notes": "All 6 fault injection tests passed. Fixed: atomic write (flush+fsync+replace), added runs/ archive."
+    },
+    {
+      "id": "T-OPS-001",
+      "description": "运维加固：runs/轮转、schema校验、secrets扫描、状态看板、告警机制",
+      "status": "completed",
+      "last_update": "2026-02-13T08:47:00+00:00",
+      "depends_on": [
+        "T-AUDIT-001"
+      ],
+      "claim": null,
+      "result": {
+        "verify": {
+          "command": "scripts/verify.sh",
+          "exit_code": 0,
+          "evidence": "13 tests passed, 0 failed. Rotation, schema validation, secrets scanning all verified."
+        },
+        "git": null,
+        "summary": "Added runs/ rotation (retention_days, max_runs_mb), schema_validator.py, secrets_scanner.py, status dashboard, alert mechanism, security guardrails"
+      },
+      "history": [
+        {
+          "attempt": 1,
+          "run_id": "ops-20250213-163000",
+          "status": "completed",
+          "timestamp": "2026-02-13T08:47:00+00:00",
+          "error": ""
+        }
+      ],
+      "notes": "P0: runs/ rotation with cleanup_runs(), schema_validator.py, secrets_scanner.py. P1: status.md dashboard, ALERT.txt mechanism. Security guardrails added to CLAUDE.md."
     }
   ]
 }

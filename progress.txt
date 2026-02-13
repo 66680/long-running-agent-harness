@@ -443,3 +443,49 @@ Git HEAD: 232f921
 下一步: git commit
 需要人工: 否
 ================================================================================
+
+================================================================================
+[2025-02-13T16:30:00+08:00] OPS_START: T-OPS-001
+任务 ID: T-OPS-001
+运行 ID: ops-20250213-163000
+Git HEAD: 11f1a2a
+操作: 开始运维加固
+验证命令: scripts/verify.sh
+验证结果: exit_code=0
+实施范围:
+  P0-1: runs/ 归档轮转与配额
+  P0-2: Task.json schema 校验
+  P0-3: secrets 扫描
+  P1-1: 状态看板 (status.md)
+  P1-2: 告警机制 (ALERT.txt)
+  安全护栏文档
+结果: 进行中
+下一步: 实现 P0-1 runs/ 轮转
+需要人工: 否
+
+============================================================
+[2026-02-13T08:47:00+00:00] COMPLETE: T-OPS-001
+运行 ID: ops-20250213-163000
+状态: in_progress -> completed
+验证命令: scripts/verify.sh
+验证结果: exit_code=0
+验证证据: 13 tests passed, 0 failed. Rotation, schema validation, secrets scanning all verified.
+摘要: Added runs/ rotation (retention_days, max_runs_mb), schema_validator.py, secrets_scanner.py, status dashboard, alert mechanism, security guardrails
+耗时: ~15分钟
+结果: 成功
+需要人工: 否
+
+实现内容:
+- P0-1: runs/ 归档轮转 - cleanup_runs() 方法，--cleanup CLI
+- P0-2: Task.json schema 校验 - scripts/schema_validator.py
+- P0-3: secrets 扫描 - scripts/secrets_scanner.py
+- P1-1: 状态看板 - generate_status_report()，--report CLI
+- P1-2: 告警机制 - update_alert()，clear_alert()
+- 安全护栏 - CLAUDE.md 添加禁止操作和路径边界章节
+
+验收测试:
+1. 轮转测试: 创建 30 天前的 runs/，--cleanup 成功删除 3 个文件
+2. Schema 测试: 删除 version 字段，schema_validator.py 检测到错误
+3. Secrets 测试: 创建含 api_key 的文件，secrets_scanner.py 检测到泄露
+4. verify.sh: 13 tests passed, 0 failed
+============================================================

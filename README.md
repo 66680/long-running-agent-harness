@@ -189,7 +189,9 @@ tail -50 runner.log
   "config": {
     "lease_ttl_seconds": 900,
     "max_attempts": 3,
-    "verify_required": true
+    "verify_required": true,
+    "retention_days": 7,
+    "max_runs_mb": 100
   },
   "tasks": [{
     "id": "task-001",
@@ -203,6 +205,16 @@ tail -50 runner.log
   }]
 }
 ```
+
+### 配置参数说明
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `lease_ttl_seconds` | 900 | 任务租约有效期（秒） |
+| `max_attempts` | 3 | 最大重试次数 |
+| `verify_required` | true | 是否要求 verify 通过 |
+| `retention_days` | 7 | runs/ 归档保留天数 |
+| `max_runs_mb` | 100 | runs/ 目录最大容量（MB） |
 
 ## 最佳实践
 
@@ -239,6 +251,9 @@ ls runs/
 
 # 查看特定运行的输出
 cat runs/run-20250213-160000-abc123.json | python -m json.tool
+
+# 清理过期归档
+python auto_task_runner.py --cleanup
 ```
 
 归档内容包括：
@@ -247,6 +262,53 @@ cat runs/run-20250213-160000-abc123.json | python -m json.tool
 - `stdout`: 标准输出
 - `stderr`: 标准错误
 - `parsed_result`: 解析的结果 JSON
+
+### 归档轮转
+
+runs/ 目录会根据以下规则自动清理：
+
+1. 超过 `retention_days` 天的归档会被删除
+2. 如果总大小超过 `max_runs_mb`，会删除最旧的归档
+
+手动触发清理：
+```bash
+python auto_task_runner.py --cleanup
+```
+
+## 状态看板与告警
+
+### 生成状态看板
+
+```bash
+python auto_task_runner.py --report
+```
+
+生成 `status.md` 文件，包含：
+- 任务状态统计
+- blocked 任务列表
+- 最近 10 次运行摘要
+- runs/ 磁盘占用
+
+### 告警机制
+
+当出现以下情况时，会生成 `ALERT.txt` 文件：
+- 出现 blocked 任务
+- 连续失败达到 max_failures
+
+告警文件内容：
+```
+ALERT: blocked
+时间: 2025-02-13T16:00:00+00:00
+任务: task-xxx
+消息: 缺少 API Key
+
+建议操作:
+1. 检查 progress.txt 获取详细信息
+2. 检查 Task.json 中的任务状态
+3. 解决问题后删除此文件
+```
+
+外部监控系统可以监视 `ALERT.txt` 文件的存在来触发通知。
 
 ## 处理 blocked 任务 (Human Help Packet)
 
