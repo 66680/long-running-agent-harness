@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Claude Code
+.claude/
+
+# Logs
+*.log
+runner.log
+
+# Runtime files
+STOP
+PAUSE
+nul
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+*.local
+
+# Lock files (temporary)
+*.lock
