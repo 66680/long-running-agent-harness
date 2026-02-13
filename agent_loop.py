@@ -136,8 +136,21 @@ def run_init() -> bool:
     """运行初始化脚本"""
     log("运行初始化脚本...")
     try:
-        result = os.system("./init.sh > /dev/null 2>&1")
-        if result == 0:
+        import subprocess
+        # 使用 subprocess 更好地处理跨平台
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["bash", "./init.sh"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            result = subprocess.run(
+                ["./init.sh"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        if result.returncode == 0:
             log("初始化成功", "SUCCESS")
             return True
         else:
@@ -152,8 +165,21 @@ def run_verify() -> bool:
     """运行验证脚本"""
     log("运行验证脚本...")
     try:
-        result = os.system("./scripts/verify.sh > /dev/null 2>&1")
-        if result == 0:
+        import subprocess
+        # 使用 subprocess 更好地处理跨平台
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["bash", "./scripts/verify.sh"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            result = subprocess.run(
+                ["./scripts/verify.sh"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        if result.returncode == 0:
             log("验证通过", "SUCCESS")
             return True
         else:
