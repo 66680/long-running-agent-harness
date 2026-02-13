@@ -9,14 +9,33 @@
 - **租约机制**：lease 过期自动回收，防止任务永久卡住
 - **verify gate**：验证失败不会被标记为 completed
 - **可审计**：结构化日志，完整历史记录
+- **Intake 工作流**：通过 REQ 文件自动创建任务，无需手动编辑 Task.json
 
 ## 快速开始
 
-### 方式一：手动会话循环（推荐新手）
+### 方式一：Intake 需求单（推荐新项目）
+
+通过编写需求单自动创建任务，无需手动编辑 Task.json：
+
+```bash
+# 1. 复制模板
+cp inbox/REQ_TEMPLATE.md inbox/REQ_我的项目.md
+
+# 2. 编辑需求单，填写项目要求和 Task Seeds
+# 参考 inbox/REQ_TEMPLATE.md 中的格式说明
+
+# 3. 处理需求单
+python auto_task_runner.py --intake inbox/REQ_我的项目.md
+
+# 4. 开始执行任务
+python auto_task_runner.py --loop
+```
+
+### 方式二：手动会话循环（推荐新手）
 
 每次新会话时说 "继续" 或 "开始执行"，Claude 会自动领取并执行下一个任务。
 
-### 方式二：自动化任务循环（推荐）
+### 方式三：自动化任务循环（推荐）
 
 使用 `auto_task_runner.py` 实现真正的自动化，每个任务在独立的 Claude 进程中执行（干净上下文）。
 
@@ -38,6 +57,12 @@ python auto_task_runner.py --dry-run
 
 # 回收过期租约
 python auto_task_runner.py --reclaim
+
+# 处理 REQ 文件
+python auto_task_runner.py --intake inbox/REQ_xxx.md
+
+# 监听 inbox 目录（配合 --loop）
+python auto_task_runner.py --watch-inbox inbox --loop
 ```
 
 **高级选项：**
@@ -52,7 +77,7 @@ python auto_task_runner.py --loop --timeout 600
 python auto_task_runner.py --loop --lease-ttl 1800
 ```
 
-### 方式三：完全自动化（无人值守）
+### 方式四：完全自动化（无人值守）
 
 ```bash
 # 后台运行，输出到日志文件
@@ -324,3 +349,81 @@ ALERT: blocked
    - 改为 `pending` 以重试
    - 改为 `canceled` 以跳过
 5. 删除 STOP 文件（如果存在）继续运行
+
+## Intake 需求单工作流
+
+Intake 功能允许通过编写 `inbox/REQ_*.md` 需求单来自动创建任务，无需手动编辑 Task.json。
+
+### REQ 文件格式
+
+```markdown
+# REQ_XXX: 项目名称
+
+## Status
+pending
+
+## 项目要求
+（将合并到 CLAUDE.md 的内容，描述项目背景、技术栈、约束等）
+
+## 运行参数
+```yaml
+lease_ttl_seconds: 1200
+max_attempts: 5
+```
+
+## Task Seeds
+
+### TASK-001: 任务标题
+- goal: 实现 XX 功能
+- acceptance: 通过 YY 测试
+- constraints: 不修改 ZZ 文件
+- verification: pytest tests/
+- scope: src/module/
+- priority: P0
+- depends_on: []
+```
+
+### 使用方法
+
+```bash
+# 1. 复制模板
+cp inbox/REQ_TEMPLATE.md inbox/REQ_我的项目.md
+
+# 2. 编辑需求单
+
+# 3. 处理单个 REQ 文件
+python auto_task_runner.py --intake inbox/REQ_我的项目.md
+
+# 4. 或启用监听模式（自动处理新 REQ）
+python auto_task_runner.py --watch-inbox inbox --loop
+```
+
+### Intake 处理流程
+
+1. 解析 REQ 文件
+2. 校验 REQ 结构（必须有 req_id, task_seeds）
+3. 合并项目要求到 CLAUDE.md
+4. 合并运行参数到 Task.json config
+5. 转换 Task Seeds 为可执行任务
+6. 运行门禁校验（schema_validator, secrets_scanner, verify.sh）
+7. git commit
+8. 移动 REQ 到 inbox/processed/
+
+### Task Seed 字段说明
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| goal | 是 | 任务目标 |
+| acceptance | 是 | 验收标准 |
+| constraints | 否 | 约束条件 |
+| verification | 否 | 验证命令 |
+| scope | 否 | 作用范围 |
+| priority | 否 | 优先级 P0/P1/P2 |
+| depends_on | 否 | 依赖任务列表 |
+
+### 注意事项
+
+- Task ID 冲突时会自动添加后缀（如 TASK-001 -> TASK-001-1）
+- 处理完成后 REQ 文件会被移动到 inbox/processed/
+- 门禁校验失败会自动回滚 Task.json
+- 监听模式下每轮循环开始时会检查 inbox 目录

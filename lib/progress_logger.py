@@ -346,3 +346,100 @@ class ProgressLogger:
 操作: 拒绝标记为 completed，改为 failed
 """
         self._append(entry)
+
+    # ==================== Intake 日志方法 ====================
+
+    def log_intake_start(
+        self,
+        run_id: str,
+        req_id: str,
+        req_path: str,
+    ) -> None:
+        """
+        记录 Intake 开始事件。
+
+        Args:
+            run_id: 运行 ID
+            req_id: REQ ID
+            req_path: REQ 文件路径
+        """
+        entry = f"""
+{'=' * 60}
+[{self._timestamp()}] INTAKE_START: {req_id}
+运行 ID: {run_id}
+REQ 文件: {req_path}
+操作: 开始处理需求单
+"""
+        self._append(entry)
+
+    def log_intake_complete(
+        self,
+        run_id: str,
+        req_id: str,
+        tasks_added: list,
+        config_updates: dict,
+        claude_md_summary: str,
+        verify: dict,
+        git: dict,
+    ) -> None:
+        """
+        记录 Intake 完成事件。
+
+        Args:
+            run_id: 运行 ID
+            req_id: REQ ID
+            tasks_added: 添加的任务 ID 列表
+            config_updates: 配置更新
+            claude_md_summary: CLAUDE.md 修改摘要
+            verify: 验证结果
+            git: Git 提交信息
+        """
+        tasks_str = ", ".join(tasks_added) if tasks_added else "无"
+        config_str = ", ".join(f"{k}={v}" for k, v in config_updates.items()) if config_updates else "无"
+
+        entry = f"""[{self._timestamp()}] INTAKE_COMPLETE: {req_id}
+运行 ID: {run_id}
+状态: completed
+添加任务: {tasks_str}
+配置更新: {config_str}
+CLAUDE.md: {claude_md_summary}
+验证命令: {verify.get('command', '')}
+验证结果: exit_code={verify.get('exit_code', -1)}
+Git 提交: {git.get('commit', '')} ({git.get('branch', '')})
+结果: 成功
+需要人工: 否
+"""
+        self._append(entry)
+
+    def log_intake_fail(
+        self,
+        run_id: str,
+        req_id: str,
+        error: str,
+    ) -> None:
+        """
+        记录 Intake 失败事件。
+
+        Args:
+            run_id: 运行 ID
+            req_id: REQ ID
+            error: 错误信息
+        """
+        entry = f"""[{self._timestamp()}] INTAKE_FAIL: {req_id}
+运行 ID: {run_id}
+状态: failed/blocked
+错误: {error}
+结果: 失败
+需要人工: 是
+
+--- Intake Help Packet ---
+REQ ID: {req_id}
+运行 ID: {run_id}
+错误: {error}
+建议操作:
+1. 检查 REQ 文件格式是否正确
+2. 确保所有必填字段已填写
+3. 修复后重新运行 --intake
+--- End Packet ---
+"""
+        self._append(entry)

@@ -37,6 +37,7 @@ from lib.file_lock import TaskFileLock
 from lib.state_machine import TaskStateMachine, TaskStatus, VerifyResult, GitResult
 from lib.prompts import build_task_prompt
 from lib.progress_logger import ProgressLogger
+from lib.intake_handler import IntakeHandler
 
 # 默认配置
 DEFAULT_CONFIG = {
@@ -77,7 +78,12 @@ def log(msg: str, level: str = "INFO"):
         "ERR": Colors.RED
     }
     color = colors.get(level, "")
-    print(f"{color}[{ts}] {msg}{Colors.RESET}")
+    try:
+        print(f"{color}[{ts}] {msg}{Colors.RESET}")
+    except UnicodeEncodeError:
+        # Windows console encoding issue
+        safe_msg = msg.encode('ascii', errors='replace').decode('ascii')
+        print(f"{color}[{ts}] {safe_msg}{Colors.RESET}")
 
 
 class TaskRunner:
@@ -612,7 +618,7 @@ class TaskRunner:
             log(f"任务执行失败: {error}", "ERR")
             return False, task_id
 
-    def run_loop(self, max_count: Optional[int] = None):
+    def run_loop(self, max_count: Optional[int] = None, watch_inbox: Optional[str] = None):
         """循环执行任务"""
         print()
         print(f"{Colors.BOLD}{'=' * 50}")
@@ -623,6 +629,12 @@ class TaskRunner:
 
         # 记录启动
         self.logger.log_startup(self.runner_id, self.config)
+
+        # 初始化 intake handler（如果启用监听）
+        intake_handler = None
+        if watch_inbox:
+            intake_handler = IntakeHandler(watch_inbox, self.config)
+            log(f"启用 inbox 监听: {watch_inbox}", "INFO")
 
         # 显示初始状态
         stats = self.get_task_stats()
@@ -656,6 +668,21 @@ class TaskRunner:
                 log("存在阻塞任务，停止执行", "WARN")
                 self.logger.log_stop("blocked tasks exist")
                 break
+
+            # 检查 inbox（如果启用监听）
+            if intake_handler:
+                new_reqs = intake_handler.scan_inbox()
+                for req_path in new_reqs:
+                    log(f"发现新 REQ: {req_path.name}", "INFO")
+                    run_id = self.state_machine.generate_run_id()
+                    result = intake_handler.process_req(req_path, run_id)
+                    if result["status"] == "completed":
+                        log(f"REQ 处理完成: 添加 {len(result['tasks_added'])} 个任务", "OK")
+                        # 刷新任务统计
+                        stats = self.get_task_stats()
+                        log(f"更新后任务状态: {stats}")
+                    else:
+                        log(f"REQ 处理失败: {result['error']}", "ERR")
 
             if max_count is not None and count >= max_count:
                 log(f"已执行 {count} 个任务，达到指定数量", "OK")
@@ -889,6 +916,8 @@ def main():
   python auto_task_runner.py --reclaim    # 回收过期租约
   python auto_task_runner.py --cleanup    # 清理过期 runs/ 归档
   python auto_task_runner.py --report     # 生成状态看板 status.md
+  python auto_task_runner.py --intake FILE  # 处理指定的 REQ 文件
+  python auto_task_runner.py --watch-inbox DIR --loop  # 监听 inbox 目录
 
 停止/暂停:
   touch STOP                              # 立即停止
@@ -910,6 +939,10 @@ def main():
                         help="清理过期 runs/ 归档")
     parser.add_argument("--report", action="store_true",
                         help="生成状态看板 status.md")
+    parser.add_argument("--intake", metavar="FILE",
+                        help="处理指定的 REQ 文件")
+    parser.add_argument("--watch-inbox", metavar="DIR",
+                        help="监听 inbox 目录，每轮先处理新 REQ（需配合 --loop）")
     parser.add_argument("--max-turns", type=int, default=DEFAULT_CONFIG["max_turns"],
                         help=f"Claude 最大轮次 (默认: {DEFAULT_CONFIG['max_turns']})")
     parser.add_argument("--timeout", type=int, default=DEFAULT_CONFIG["timeout"],
@@ -954,12 +987,32 @@ def main():
     elif args.report:
         report_path = runner.generate_status_report()
         log(f"状态看板已生成: {report_path}", "OK")
+    elif args.intake:
+        # 处理指定的 REQ 文件
+        req_path = Path(args.intake)
+        if not req_path.exists():
+            log(f"REQ 文件不存在: {args.intake}", "ERR")
+            sys.exit(1)
+        handler = IntakeHandler(str(req_path.parent), config)
+        run_id = runner.state_machine.generate_run_id()
+        result = handler.process_req(req_path, run_id)
+        if result["status"] == "completed":
+            log(f"REQ 处理完成: {result['req_id']}", "OK")
+            log(f"  添加任务: {', '.join(result['tasks_added'])}", "INFO")
+            log(f"  配置更新: {result['config_updates']}", "INFO")
+            log(f"  CLAUDE.md: {result['claude_md_patch_summary']}", "INFO")
+            log(f"  Git: {result['git']}", "INFO")
+        else:
+            log(f"REQ 处理失败: {result['error']}", "ERR")
+            if result.get("needs_human"):
+                log("需要人工介入", "WARN")
+            sys.exit(1)
     elif args.dry_run:
         runner.execute_one_task(dry_run=True)
     elif args.loop:
-        runner.run_loop()
+        runner.run_loop(watch_inbox=args.watch_inbox)
     elif args.count:
-        runner.run_loop(max_count=args.count)
+        runner.run_loop(max_count=args.count, watch_inbox=args.watch_inbox)
     else:
         runner.execute_one_task()
 
