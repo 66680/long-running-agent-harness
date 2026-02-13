@@ -260,6 +260,36 @@
         }
       ],
       "notes": "P0: runs/ rotation with cleanup_runs(), schema_validator.py, secrets_scanner.py. P1: status.md dashboard, ALERT.txt mechanism. Security guardrails added to CLAUDE.md."
+    },
+    {
+      "id": "T-SIGNOFF-001",
+      "description": "Final Release-Ready checklist sign-off run",
+      "status": "completed",
+      "last_update": "2026-02-13T09:30:00+00:00",
+      "depends_on": [
+        "T-AUDIT-001",
+        "T-OPS-001"
+      ],
+      "claim": null,
+      "result": {
+        "verify": {
+          "command": "scripts/verify.sh",
+          "exit_code": 0,
+          "evidence": "13 tests passed, 0 failed. See progress.txt lines 507-620 for detailed checklist evidence."
+        },
+        "git": null,
+        "summary": "Release-Ready checklist complete: 1) init.sh/verify.sh pass, 2) retention_days+max_runs_mb rotation verified, 3) schema validation gate confirmed, 4) secrets scan file+diff paths verified with masking, 5) ALERT lifecycle tested, 6) guardrails in prompts.py confirmed"
+      },
+      "history": [
+        {
+          "attempt": 1,
+          "run_id": "signoff-20260213-085000",
+          "status": "completed",
+          "timestamp": "2026-02-13T09:30:00+00:00",
+          "error": ""
+        }
+      ],
+      "notes": "All 6 checklist sections passed. System is release-ready."
     }
   ]
 }

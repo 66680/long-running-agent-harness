@@ -489,3 +489,162 @@ Git HEAD: 11f1a2a
 3. Secrets 测试: 创建含 api_key 的文件，secrets_scanner.py 检测到泄露
 4. verify.sh: 13 tests passed, 0 failed
 ============================================================
+
+============================================================
+[2026-02-13T08:50:00+00:00] CLAIM: T-SIGNOFF-001
+运行 ID: signoff-20260213-085000
+Git HEAD: da18e27de1f0c1fcf350a33eeb1dc97aee86a757
+状态: pending -> in_progress
+描述: Final Release-Ready checklist sign-off run
+操作: 开始最终验收签收流程
+============================================================
+
+[2026-02-13T08:50:30+00:00] SIGNOFF-CHECK: 1.1 环境初始化
+命令: bash init.sh
+退出码: 0
+证据: 初始化完成，14个任务（13 completed, 1 in_progress）
+结果: PASS
+
+[2026-02-13T08:51:00+00:00] SIGNOFF-CHECK: 1.2 全量验证
+命令: bash scripts/verify.sh
+退出码: 0
+测试总数: 13
+失败数: 0
+警告数: 0
+证据: 验证通过（核心文件、JSON格式、Git状态、脚本可执行性、progress格式、schema校验、secrets扫描）
+结果: PASS
+
+[2026-02-13T08:51:30+00:00] SIGNOFF-CHECK: 1.3 生成状态看板
+命令: python auto_task_runner.py --report
+退出码: 0
+产物路径: status.md
+产物大小: 368 bytes
+最后更新: 2026-02-13 17:09:17 +0800
+结果: PASS
+
+[2026-02-13T08:52:00+00:00] SIGNOFF-CHECK: 1.4 清理轮转
+命令: python auto_task_runner.py --cleanup
+退出码: 0
+runs/ 状态: 空目录（无需清理）
+删除文件数: 0
+结果: PASS
+
+[2026-02-13T08:53:00+00:00] SIGNOFF-CHECK: 2.1 retention_days 清理路径
+操作: 创建 3 个旧文件（30天前）+ 2 个新文件（今天）
+命令: python auto_task_runner.py --cleanup
+退出码: 0
+删除文件: test-retention-old-1.json, test-retention-old-2.json, test-retention-old-3.json
+保留文件: test-retention-new-1.json, test-retention-new-2.json
+验证: 最旧文件优先删除，最新 run 未被删除
+结果: PASS
+
+[2026-02-13T08:54:00+00:00] SIGNOFF-CHECK: 2.2 max_runs_mb 触发路径
+操作: 临时设置 max_runs_mb=0.001 (1KB)，创建 5 个文件共 2.51KB
+命令: python auto_task_runner.py --cleanup
+退出码: 0
+阈值: 1 KB
+清理前占用: 2570 bytes (2.51 KB)
+清理后占用: 1028 bytes (1.00 KB)
+删除文件: test-quota-1.json, test-quota-2.json, test-quota-3.json（最旧的 3 个）
+保留文件: test-quota-4.json, test-quota-5.json（最新的 2 个）
+验证: 按最旧优先回收直到低于阈值，最新 run 未被误删
+恢复: max_runs_mb 已恢复为 100，测试文件已清理
+结果: PASS
+
+[2026-02-13T08:55:00+00:00] SIGNOFF-CHECK: 3 Schema 校验作为门禁
+操作: 创建 Task.json.schema-test（移除 version 字段）
+命令: python scripts/schema_validator.py Task.json.schema-test
+退出码: 1 (预期失败)
+失败证据: SCHEMA_ERROR - 缺少 version 字段
+恢复动作: 删除测试文件 Task.json.schema-test
+恢复后验证: python scripts/schema_validator.py Task.json
+恢复后退出码: 0
+最终验证: bash scripts/verify.sh
+最终退出码: 0
+结果: PASS
+
+[2026-02-13T08:56:00+00:00] SIGNOFF-CHECK: 4.1 Secrets 文件扫描路径
+操作: 创建 runs/test-secret-file.json 含假 API key
+命令: python scripts/secrets_scanner.py
+退出码: 1 (预期拦截)
+检测证据: SECRETS_FOUND - [Generic Secret] runs\test-secret-file.json:1 -> api_key=...mnop
+掩码验证: 输出中 key 被截断为 "api_key=...mnop"，未完整泄露
+清理动作: 删除测试文件
+清理后验证: python scripts/secrets_scanner.py
+清理后退出码: 0
+结果: PASS
+
+[2026-02-13T08:57:00+00:00] SIGNOFF-CHECK: 4.2 Secrets git diff 扫描路径
+操作: 创建并暂存 test-diff-secret.txt 含假 GitHub token
+命令: python scripts/secrets_scanner.py
+退出码: 1 (预期拦截)
+检测证据: SECRETS_FOUND - [Generic Secret] git diff:0 -> TOKEN=gh...stuv, [GitHub Personal Access Token] git diff:0 -> ghp_FAKE...stuv
+掩码验证: 输出中 token 被截断，未完整泄露
+撤销动作: git reset HEAD test-diff-secret.txt && rm test-diff-secret.txt
+撤销后验证: bash scripts/verify.sh
+撤销后退出码: 0
+结果: PASS
+
+[2026-02-13T08:58:00+00:00] SIGNOFF-CHECK: 5 ALERT 生命周期
+触发操作: runner.update_alert("blocked", "test-task-001", "Test blocked condition")
+触发证据: ALERT.txt 创建成功 (273 bytes)
+告警内容: ALERT: blocked, 任务: test-task-001, 消息: Test blocked condition
+清除操作: runner.clear_alert()
+清除证据: ALERT.txt 已删除
+结果: PASS
+
+[2026-02-13T08:59:00+00:00] SIGNOFF-CHECK: 6 护栏可执行性
+验证方式: 检查 prompts.py 生成的约束
+检查项:
+  - [PASS] task_id 约束: "你只能处理 task_id=xxx"
+  - [PASS] run_id 约束: "你的 run_id=xxx"
+  - [PASS] 禁止领取其他任务: "不得领取或处理其他任务"
+  - [PASS] 禁止修改 Task.json: "不得直接修改 Task.json"
+  - [PASS] run_id 必须匹配: "task_id 和 run_id 必须与上面给定的值完全匹配"
+文档护栏: CLAUDE.md 包含禁止操作、路径边界、敏感信息处理、危险命令检测
+运行时护栏: secrets_scanner.py 检测敏感信息泄露（已在 4.1/4.2 验证）
+结果: PASS
+
+============================================================
+[2026-02-13T09:30:00+00:00] COMPLETE: T-SIGNOFF-001
+运行 ID: signoff-20260213-085000
+状态: in_progress -> completed
+验证命令: scripts/verify.sh
+验证结果: exit_code=0
+验证证据: 13 tests passed, 0 failed
+
+=== Release-Ready Checklist Summary ===
+
+1. 全链路一键自检
+   - 1.1 init.sh: exit_code=0 ✓
+   - 1.2 verify.sh: 13 passed, 0 failed ✓
+   - 1.3 --report: status.md 生成成功 ✓
+   - 1.4 --cleanup: 无需清理 ✓
+
+2. 轮转策略边界验收
+   - 2.1 retention_days: 删除 3 个旧文件，保留 2 个新文件 ✓
+   - 2.2 max_runs_mb: 阈值 1KB，清理后 1.00KB，最新 run 未误删 ✓
+
+3. Schema 校验作为门禁
+   - 制造 schema 错误: exit_code=1 (预期) ✓
+   - 恢复后验证: exit_code=0 ✓
+
+4. Secrets 扫描覆盖范围
+   - 4.1 文件扫描: 检测到假 API key，输出已掩码 ✓
+   - 4.2 git diff 扫描: 检测到假 GitHub token，输出已掩码 ✓
+
+5. ALERT 生命周期
+   - 触发: ALERT.txt 创建成功 ✓
+   - 清除: ALERT.txt 删除成功 ✓
+
+6. 护栏可执行性
+   - prompts.py 约束检查: 5/5 PASS ✓
+   - CLAUDE.md 文档护栏: 已确认 ✓
+
+=== 签收结论 ===
+所有 6 项检查全部通过，系统已达到 Release-Ready 状态。
+
+Git HEAD: da18e27de1f0c1fcf350a33eeb1dc97aee86a757
+签收时间: 2026-02-13T09:30:00+00:00
+签收工程师: signoff-engineer
+============================================================
