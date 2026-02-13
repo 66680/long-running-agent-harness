@@ -245,9 +245,8 @@ main_loop() {
         log "等待 ${LOOP_DELAY_SECONDS} 秒后进入下一轮..."
         sleep $LOOP_DELAY_SECONDS
 
-        # 演示模式：只运行一轮
-        log_warn "演示模式：只运行一轮，退出循环"
-        break
+        # 注意：已关闭演示模式，系统将持续运行
+        # 使用 touch STOP 或 Ctrl+C 停止
     done
 
     log "主循环结束，共运行 $LOOP_COUNT 轮"

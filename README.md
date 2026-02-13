@@ -4,74 +4,133 @@
 
 ## 快速开始
 
+### 方式一：手动会话循环（推荐新手）
+
+1. 打开 Claude Code，进入项目目录
+2. 告诉 Claude 你的需求，让它帮你拆分任务到 `Task.json`
+3. 每次新会话，Claude 会自动：
+   - 读取进度文件
+   - 领取一个任务
+   - 实现并验证
+   - 提交代码
+
 ```bash
-# 1. 初始化环境
-./init.sh
+# 示例对话
+你: "我要做一个博客系统，帮我拆分任务"
+Claude: [创建 Task.json，包含多个任务]
 
-# 2. 运行验证
-./scripts/verify.sh
+你: "开始执行"
+Claude: [领取 task-001，实现，验证，提交]
 
-# 3. 启动无限循环运行器（二选一）
-./run_forever.sh      # Bash 版本
-python agent_loop.py  # Python 版本
+# 下次会话
+你: "继续"
+Claude: [自动读取进度，领取下一个任务...]
+```
+
+### 方式二：自动化循环（需要 Claude Code CLI）
+
+```bash
+# 1. 安装 Claude Code CLI
+npm install -g @anthropic-ai/claude-code
+
+# 2. 登录
+claude login
+
+# 3. 运行自动化脚本
+python claude_runner.py
+
+# 4. 停止
+touch STOP
+```
+
+## 如何拆分任务
+
+告诉我你的需求，我会帮你拆分。示例：
+
+```
+需求: "做一个用户认证系统"
+
+拆分结果:
+- task-001: 设计用户数据模型 (User schema)
+- task-002: 实现用户注册 API (/api/register)
+- task-003: 实现用户登录 API (/api/login)
+- task-004: 实现 JWT token 生成和验证
+- task-005: 添加认证中间件
+- task-006: 编写单元测试
+- task-007: 编写集成测试
+- task-008: 添加密码重置功能
 ```
 
 ## 核心文件
 
 | 文件 | 用途 |
 |------|------|
-| `CLAUDE.md` | 开发 SOP，所有 Agent 的行为规范 |
-| `Task.json` | 任务列表，唯一权威任务源 |
+| `CLAUDE.md` | 开发 SOP，AI 的行为规范 |
+| `Task.json` | 任务列表（唯一权威源） |
 | `progress.txt` | 跨会话工作日志 |
 | `init.sh` | 环境初始化脚本 |
 | `scripts/verify.sh` | 端到端验证脚本 |
-| `run_forever.sh` | Bash 无限循环运行器 |
-| `agent_loop.py` | Python 无限循环运行器 |
+| `claude_runner.py` | 自动化循环脚本（调用 Claude CLI） |
 
 ## 工作流程
 
 每轮会话遵循 6 步流程：
 
-1. **初始化环境** - 运行 `init.sh`
-2. **领取任务** - 从 `Task.json` 选择一个 pending 任务
-3. **开发实现** - 只围绕当前任务做改动
-4. **测试验证** - 运行 `scripts/verify.sh`
-5. **更新状态** - 更新 `Task.json` 和 `progress.txt`
-6. **Git 提交** - 产生清晰的 commit
+```
+1. 初始化环境     → ./init.sh
+2. 领取任务       → 从 Task.json 选择 pending 任务
+3. 开发实现       → 只围绕当前任务改动
+4. 测试验证       → ./scripts/verify.sh
+5. 更新状态       → Task.json + progress.txt
+6. Git 提交       → git commit
+```
+
+## 任务状态
+
+| 状态 | 含义 | 下一步 |
+|------|------|--------|
+| `pending` | 未开始 | 可被领取 |
+| `in_progress` | 进行中 | 当前正在处理 |
+| `completed` | 已完成 | 无需处理 |
+| `failed` | 失败 | 分析后重试 |
+| `blocked` | 阻塞 | 需要人工介入 |
 
 ## 安全刹车
 
 ```bash
-# 创建 STOP 文件，运行器会在下一轮循环时自动停止
+# 创建 STOP 文件，系统会在下一轮循环时停止
 touch STOP
 
-# 删除 STOP 文件以恢复运行
+# 删除以恢复运行
 rm STOP
 ```
 
 ## 人工介入
 
-当任务状态变为 `blocked` 时，查看 `progress.txt` 中的"人工介入请求"获取详情。
+当任务状态变为 `blocked` 时：
 
-## 任务状态
-
-| 状态 | 含义 |
-|------|------|
-| `pending` | 未开始，可被领取 |
-| `in_progress` | 进行中 |
-| `completed` | 已完成 |
-| `failed` | 失败，需分析后重试 |
-| `blocked` | 阻塞，需人工介入 |
+1. 查看 `progress.txt` 中的"人工介入请求"
+2. 根据提供的选项做出决策
+3. 更新 Task.json 或提供所需资源
+4. 删除 STOP 文件继续运行
 
 ## 查看进度
 
 ```bash
-# 查看任务概览
+# 任务概览
 cat Task.json | python -m json.tool
 
-# 查看工作日志
+# 工作日志
 tail -50 progress.txt
 
-# 查看运行器日志
+# 运行器日志
 tail -50 runner.log
 ```
+
+## 最佳实践
+
+1. **任务粒度**：每个任务应该能在一次会话内完成（15-30分钟）
+2. **依赖关系**：使用 `depends_on` 字段明确任务依赖
+3. **验证优先**：确保 `verify.sh` 能检测任务是否真正完成
+4. **及时提交**：每完成一个任务就 commit，保持可回滚
+5. **日志详细**：在 progress.txt 中记录足够的上下文
