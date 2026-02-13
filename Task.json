@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "last_modified": "2025-02-13T13:25:00+08:00",
+  "tasks": [
+    {
+      "id": "task-001",
+      "description": "创建 init.sh 初始化脚本，实现环境检查和依赖安装",
+      "status": "completed",
+      "last_update": "2025-02-13T13:25:00+08:00",
+      "depends_on": [],
+      "notes": "已创建 init.sh，包含文件检查、Git状态、安全刹车、JSON验证、任务概览功能"
+    },
+    {
+      "id": "task-002",
+      "description": "创建 scripts/verify.sh 验证脚本，实现最小端到端测试",
+      "status": "completed",
+      "last_update": "2025-02-13T13:25:00+08:00",
+      "depends_on": ["task-001"],
+      "notes": "已创建 verify.sh，包含文件存在性、JSON格式、Git状态、脚本可执行性、progress格式验证"
+    },
+    {
+      "id": "task-003",
+      "description": "创建 run_forever.sh 无限循环脚本，实现主循环和安全刹车",
+      "status": "completed",
+      "last_update": "2025-02-13T13:25:00+08:00",
+      "depends_on": ["task-001", "task-002"],
+      "notes": "已创建 run_forever.sh，包含主循环、STOP文件检测、阻塞任务检测、连续失败计数、信号处理"
+    },
+    {
+      "id": "task-004",
+      "description": "创建 Python 版本的 agent_loop.py 作为备选运行器",
+      "status": "completed",
+      "last_update": "2025-02-13T13:25:00+08:00",
+      "depends_on": ["task-003"],
+      "notes": "已创建 agent_loop.py，功能与 run_forever.sh 对等，支持崩溃恢复和信号处理"
+    },
+    {
+      "id": "task-005",
+      "description": "创建 README.md 说明文档",
+      "status": "completed",
+      "last_update": "2025-02-13T13:25:00+08:00",
+      "depends_on": ["task-003"],
+      "notes": "已创建 README.md，包含快速开始、核心文件说明、工作流程、安全刹车、任务状态说明"
+    },
+    {
+      "id": "task-006",
+      "description": "完整测试：运行一轮完整的任务领取→实现→验证→提交流程",
+      "status": "in_progress",
+      "last_update": "2025-02-13T13:25:00+08:00",
+      "depends_on": ["task-001", "task-002"],
+      "notes": "正在执行完整流程验证"
+    }
+  ]
+}
