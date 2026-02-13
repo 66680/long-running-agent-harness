@@ -1,9 +1,9 @@
 {
   "version": "2.0",
-  "last_modified": "2026-02-13T08:32:31.342636+00:00",
+  "last_modified": "2026-02-13T11:23:38.617399+00:00",
   "config": {
     "lease_ttl_seconds": 900,
-    "max_attempts": 3,
+    "max_attempts": 5,
     "verify_required": true,
     "retention_days": 7,
     "max_runs_mb": 100
@@ -290,6 +290,28 @@
         }
       ],
       "notes": "All 6 checklist sections passed. System is release-ready."
+    },
+    {
+      "id": "DEMO-001",
+      "description": "创建演示文件\n目标: 创建 demo.txt 文件\n验收标准: 文件存在且内容正确",
+      "status": "pending",
+      "last_update": "2026-02-13T11:23:38.617382+00:00",
+      "depends_on": [],
+      "claim": null,
+      "result": null,
+      "history": [],
+      "notes": "验证命令: test -f demo.txt\n范围: ./\n优先级: P0"
+    },
+    {
+      "id": "DEMO-002",
+      "description": "验证演示文件\n目标: 验证 demo.txt 文件内容\n验收标准: 文件内容包含 \"Hello Intake\"",
+      "status": "pending",
+      "last_update": "2026-02-13T11:23:38.617394+00:00",
+      "depends_on": [],
+      "claim": null,
+      "result": null,
+      "history": [],
+      "notes": "验证命令: grep \"Hello Intake\" demo.txt\n范围: ./\n优先级: P1"
     }
   ]
 }

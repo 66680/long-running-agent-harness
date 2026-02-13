@@ -420,3 +420,14 @@ python auto_task_runner.py --reclaim
 - `DROP TABLE`, `DELETE FROM` (无 WHERE)
 - `chmod 777`
 - `sudo` 或 `su`
+
+
+## 项目要求
+
+<!-- Intake 自动添加 2026-02-13 11:23 -->
+这是一个演示项目，用于验证 intake 功能。
+
+技术要求：
+- 使用 Python 3.11+
+- 遵循 PEP 8 代码风格
+<!-- End Intake -->
