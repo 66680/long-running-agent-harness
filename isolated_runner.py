@@ -121,6 +121,29 @@ def has_blocked_tasks() -> bool:
     return any(t.get("status") == "blocked" for t in data.get("tasks", []))
 
 
+def get_claude_path() -> str:
+    """获取 claude 命令路径"""
+    import shutil
+
+    # 尝试直接找到
+    claude_path = shutil.which("claude")
+    if claude_path:
+        return claude_path
+
+    # Windows 常见路径
+    if sys.platform == "win32":
+        possible_paths = [
+            os.path.expanduser("~/AppData/Roaming/npm/claude.cmd"),
+            os.path.expanduser("~/AppData/Roaming/npm/claude"),
+            "C:/Program Files/nodejs/claude.cmd",
+        ]
+        for p in possible_paths:
+            if os.path.exists(p):
+                return p
+
+    return "claude"  # 默认
+
+
 def run_isolated_claude() -> tuple[bool, str]:
     """
     在隔离的进程中运行 Claude
@@ -128,11 +151,18 @@ def run_isolated_claude() -> tuple[bool, str]:
     """
     log("启动新的 Claude 进程（隔离上下文）...")
 
+    claude_cmd = get_claude_path()
+    log(f"使用 Claude: {claude_cmd}")
+
     try:
+        # 移除 CLAUDECODE 环境变量以允许嵌套调用
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        env["CLAUDE_NO_HISTORY"] = "1"  # 确保不加载历史
+
         # 使用 claude --print 模式，每次都是独立进程
         result = subprocess.run(
             [
-                "claude",
+                claude_cmd,
                 "--print",  # 非交互模式
                 "--dangerously-skip-permissions",  # 跳过确认（生产环境谨慎使用）
                 TASK_PROMPT_TEMPLATE
@@ -141,7 +171,8 @@ def run_isolated_claude() -> tuple[bool, str]:
             text=True,
             timeout=CONFIG["claude_timeout"],
             cwd=os.getcwd(),
-            env={**os.environ, "CLAUDE_NO_HISTORY": "1"}  # 确保不加载历史
+            env=env,
+            shell=(sys.platform == "win32")  # Windows 需要 shell=True
         )
 
         output = result.stdout if result.stdout else ""
