@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_modified": "2025-02-13T13:25:00+08:00",
+  "last_modified": "2025-02-13T13:30:00+08:00",
   "tasks": [
     {
       "id": "task-001",
@@ -45,10 +45,10 @@
     {
       "id": "task-006",
       "description": "完整测试：运行一轮完整的任务领取→实现→验证→提交流程",
-      "status": "in_progress",
-      "last_update": "2025-02-13T13:25:00+08:00",
+      "status": "completed",
+      "last_update": "2025-02-13T13:30:00+08:00",
       "depends_on": ["task-001", "task-002"],
-      "notes": "正在执行完整流程验证"
+      "notes": "完整流程验证通过，git commit f2f067d"
     }
   ]
 }
