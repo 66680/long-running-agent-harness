@@ -2,7 +2,7 @@
 # run_forever.sh - 无限循环运行脚本
 # 实现持续推进的 Agent 工作流
 
-set -e
+# 不使用 set -e，因为我们需要手动控制退出
 
 echo "=========================================="
 echo "  Long-Running Agent Harness"
@@ -61,7 +61,13 @@ check_stop() {
 
 # 检查是否有阻塞任务需要人工介入
 check_blocked() {
-    local PYTHON_CMD=$(command -v python3 || command -v python)
+    local PYTHON_CMD=""
+    if command -v python &> /dev/null; then
+        PYTHON_CMD="python"
+    elif command -v python3 &> /dev/null; then
+        PYTHON_CMD="python3"
+    fi
+
     if [ -z "$PYTHON_CMD" ]; then
         return 0
     fi
@@ -75,7 +81,7 @@ print(len(blocked))
 EOF
 )
 
-    if [ "$blocked_count" -gt 0 ]; then
+    if [ -n "$blocked_count" ] && [ "$blocked_count" -gt 0 ] 2>/dev/null; then
         log_warn "存在 $blocked_count 个阻塞任务，需要人工介入"
         return 1
     fi
@@ -84,7 +90,13 @@ EOF
 
 # 获取下一个可领取的任务
 get_next_task() {
-    local PYTHON_CMD=$(command -v python3 || command -v python)
+    local PYTHON_CMD=""
+    if command -v python &> /dev/null; then
+        PYTHON_CMD="python"
+    elif command -v python3 &> /dev/null; then
+        PYTHON_CMD="python3"
+    fi
+
     if [ -z "$PYTHON_CMD" ]; then
         echo ""
         return
@@ -110,7 +122,13 @@ EOF
 
 # 检查是否所有任务都完成
 all_tasks_done() {
-    local PYTHON_CMD=$(command -v python3 || command -v python)
+    local PYTHON_CMD=""
+    if command -v python &> /dev/null; then
+        PYTHON_CMD="python"
+    elif command -v python3 &> /dev/null; then
+        PYTHON_CMD="python3"
+    fi
+
     if [ -z "$PYTHON_CMD" ]; then
         return 1
     fi
@@ -124,7 +142,7 @@ print(len(pending))
 EOF
 )
 
-    if [ "$pending_count" -eq 0 ]; then
+    if [ -n "$pending_count" ] && [ "$pending_count" -eq 0 ] 2>/dev/null; then
         return 0
     fi
     return 1
@@ -160,7 +178,7 @@ main_loop() {
     echo ""
 
     while true; do
-        ((LOOP_COUNT++))
+        LOOP_COUNT=$((LOOP_COUNT + 1))
         log "========== 循环 #$LOOP_COUNT =========="
 
         # 1. 检查安全刹车
@@ -183,7 +201,7 @@ main_loop() {
 
         # 4. 运行初始化
         if ! run_init; then
-            ((CONSECUTIVE_FAILURES++))
+            CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
             log_error "初始化失败 (连续失败: $CONSECUTIVE_FAILURES/$MAX_CONSECUTIVE_FAILURES)"
             if [ $CONSECUTIVE_FAILURES -ge $MAX_CONSECUTIVE_FAILURES ]; then
                 log_error "连续失败次数达到上限，退出循环"
@@ -215,7 +233,7 @@ main_loop() {
             CONSECUTIVE_FAILURES=0
             log_success "本轮循环完成"
         else
-            ((CONSECUTIVE_FAILURES++))
+            CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
             log_error "验证失败 (连续失败: $CONSECUTIVE_FAILURES/$MAX_CONSECUTIVE_FAILURES)"
             if [ $CONSECUTIVE_FAILURES -ge $MAX_CONSECUTIVE_FAILURES ]; then
                 log_error "连续失败次数达到上限，退出循环"
