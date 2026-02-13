@@ -1,6 +1,14 @@
-# Long-Running Agent Harness
+# Long-Running Agent Harness v2.0
 
 一套可跨无限次会话持续推进的软件开发工作流系统。
+
+## v2.0 新特性
+
+- **严格状态机**：父进程独占调度权，子进程不可自选任务
+- **文件锁**：跨平台原子读写，防止并发损坏
+- **租约机制**：lease 过期自动回收，防止任务永久卡住
+- **verify gate**：验证失败不会被标记为 completed
+- **可审计**：结构化日志，完整历史记录
 
 ## 快速开始
 
@@ -8,38 +16,53 @@
 
 每次新会话时说 "继续" 或 "开始执行"，Claude 会自动领取并执行下一个任务。
 
-### 方式二：后台自动执行 + 前台交互（推荐）
+### 方式二：自动化任务循环（推荐）
 
-**同时运行两个终端：**
+使用 `auto_task_runner.py` 实现真正的自动化，每个任务在独立的 Claude 进程中执行（干净上下文）。
 
 ```bash
-# 终端 1：启动后台执行器
-python background_agent.py start
+# 查看当前状态
+python auto_task_runner.py --status
 
-# 终端 2：正常使用 Claude Code
-claude
-# 你可以继续使用 /commit, /review-pr 等 skills
+# 执行一个任务
+python auto_task_runner.py
+
+# 循环执行直到完成
+python auto_task_runner.py --loop
+
+# 执行指定数量的任务
+python auto_task_runner.py --count 5
+
+# 只显示下一个任务（不执行）
+python auto_task_runner.py --dry-run
+
+# 回收过期租约
+python auto_task_runner.py --reclaim
 ```
 
-**控制命令：**
+**高级选项：**
 ```bash
-python background_agent.py status   # 查看状态
-python background_agent.py pause    # 暂停
-python background_agent.py resume   # 恢复
-python background_agent.py stop     # 停止
+# 限制 Claude 最大轮次（防止无限循环）
+python auto_task_runner.py --loop --max-turns 30
+
+# 设置超时时间
+python auto_task_runner.py --loop --timeout 600
+
+# 设置租约 TTL（秒）
+python auto_task_runner.py --loop --lease-ttl 1800
 ```
 
 ### 方式三：完全自动化（无人值守）
 
 ```bash
 # 后台运行，输出到日志文件
-nohup python background_agent.py start > agent.log 2>&1 &
+nohup python auto_task_runner.py --loop > runner.log 2>&1 &
 
 # 查看日志
-tail -f agent.log
+tail -f runner.log
 
 # 停止
-python background_agent.py stop
+touch STOP
 ```
 
 ## 如何拆分任务
@@ -65,23 +88,46 @@ python background_agent.py stop
 | 文件 | 用途 |
 |------|------|
 | `CLAUDE.md` | 开发 SOP，AI 的行为规范 |
-| `Task.json` | 任务列表（唯一权威源） |
-| `progress.txt` | 跨会话工作日志 |
+| `Task.json` | 任务列表（v2.0 schema，唯一权威源） |
+| `progress.txt` | 跨会话工作日志（结构化格式） |
+| `auto_task_runner.py` | 状态机驱动的任务运行器 |
+| `lib/` | 核心模块（文件锁、状态机、提示词、日志） |
 | `init.sh` | 环境初始化脚本 |
 | `scripts/verify.sh` | 端到端验证脚本 |
-| `claude_runner.py` | 自动化循环脚本（调用 Claude CLI） |
 
-## 工作流程
-
-每轮会话遵循 6 步流程：
+## 项目结构
 
 ```
-1. 初始化环境     → ./init.sh
-2. 领取任务       → 从 Task.json 选择 pending 任务
-3. 开发实现       → 只围绕当前任务改动
-4. 测试验证       → ./scripts/verify.sh
-5. 更新状态       → Task.json + progress.txt
-6. Git 提交       → git commit
+your-project/
+├── CLAUDE.md              # 开发规范
+├── Task.json              # 任务列表（v2.0 schema）
+├── progress.txt           # 工作日志
+├── auto_task_runner.py    # 状态机驱动的任务运行器
+├── lib/
+│   ├── __init__.py
+│   ├── file_lock.py       # 跨平台文件锁
+│   ├── state_machine.py   # 状态机
+│   ├── prompts.py         # 子进程提示词
+│   └── progress_logger.py # 结构化日志
+├── init.sh
+└── scripts/
+    └── verify.sh
+```
+
+## 工作流程（v2.0）
+
+```
+1. 父进程回收过期租约
+2. 检查 STOP/PAUSE 信号
+3. 选择下一个 pending 任务（依赖已满足）
+4. 生成 run_id，领取任务（写入 claim）
+5. 启动子进程，传入 task_id + run_id
+6. 子进程执行任务，输出结果 JSON
+7. 父进程验证 run_id 匹配
+8. 父进程验证 verify.exit_code == 0
+9. 更新 Task.json 状态
+10. 写入 progress.txt 日志
+11. git commit 提交改动
 ```
 
 ## 任务状态
@@ -89,34 +135,43 @@ python background_agent.py stop
 | 状态 | 含义 | 下一步 |
 |------|------|--------|
 | `pending` | 未开始 | 可被领取 |
-| `in_progress` | 进行中 | 当前正在处理 |
-| `completed` | 已完成 | 无需处理 |
-| `failed` | 失败 | 分析后重试 |
+| `in_progress` | 进行中（有 lease） | 当前正在处理 |
+| `completed` | 已完成（终态） | 无需处理 |
+| `failed` | 失败 | 自动重试（如果 < max_attempts） |
 | `blocked` | 阻塞 | 需要人工介入 |
+| `abandoned` | 放弃（lease 过期） | 自动重试 |
+| `canceled` | 取消（终态） | 无需处理 |
 
 ## 安全刹车
 
 ```bash
-# 创建 STOP 文件，系统会在下一轮循环时停止
+# 立即停止（当前任务完成后退出）
 touch STOP
 
-# 删除以恢复运行
+# 暂停执行（删除后恢复）
+touch PAUSE
+
+# 恢复运行
 rm STOP
+rm PAUSE
 ```
 
 ## 人工介入
 
 当任务状态变为 `blocked` 时：
 
-1. 查看 `progress.txt` 中的"人工介入请求"
+1. 查看 `progress.txt` 中的 "Human Help Packet"
 2. 根据提供的选项做出决策
-3. 更新 Task.json 或提供所需资源
+3. 更新 Task.json（将状态改为 pending 以重试，或 canceled 以跳过）
 4. 删除 STOP 文件继续运行
 
 ## 查看进度
 
 ```bash
 # 任务概览
+python auto_task_runner.py --status
+
+# 任务详情
 cat Task.json | python -m json.tool
 
 # 工作日志
@@ -126,6 +181,29 @@ tail -50 progress.txt
 tail -50 runner.log
 ```
 
+## Task.json v2.0 Schema
+
+```json
+{
+  "version": "2.0",
+  "config": {
+    "lease_ttl_seconds": 900,
+    "max_attempts": 3,
+    "verify_required": true
+  },
+  "tasks": [{
+    "id": "task-001",
+    "description": "任务描述",
+    "status": "pending",
+    "depends_on": [],
+    "claim": null,
+    "result": null,
+    "history": [],
+    "notes": ""
+  }]
+}
+```
+
 ## 最佳实践
 
 1. **任务粒度**：每个任务应该能在一次会话内完成（15-30分钟）
@@ -133,3 +211,4 @@ tail -50 runner.log
 3. **验证优先**：确保 `verify.sh` 能检测任务是否真正完成
 4. **及时提交**：每完成一个任务就 commit，保持可回滚
 5. **日志详细**：在 progress.txt 中记录足够的上下文
+6. **租约管理**：定期运行 `--reclaim` 回收过期租约

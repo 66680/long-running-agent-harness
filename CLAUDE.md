@@ -1,4 +1,4 @@
-# Long-Running Agent Harness - 开发 SOP
+# Long-Running Agent Harness - 开发 SOP v2.0
 
 > **重要**：本文件应复制到每个项目的根目录，每个项目独立维护自己的 Task.json 和 progress.txt
 
@@ -7,12 +7,90 @@
 ```
 your-project/
 ├── CLAUDE.md        # 本文件（开发规范）
-├── Task.json        # 本项目的任务列表
+├── Task.json        # 本项目的任务列表（v2.0 schema）
 ├── progress.txt     # 本项目的工作日志
 ├── init.sh          # 本项目的初始化脚本
+├── lib/             # 核心模块
+│   ├── __init__.py
+│   ├── file_lock.py      # 跨平台文件锁
+│   ├── state_machine.py  # 状态机
+│   ├── prompts.py        # 子进程提示词
+│   └── progress_logger.py # 结构化日志
 ├── scripts/
 │   └── verify.sh    # 本项目的验证脚本
-└── ... (项目代码)
+└── auto_task_runner.py  # 状态机驱动的任务运行器
+```
+
+---
+
+## 状态机规范（v2.0 核心）
+
+### 状态集合
+
+| 状态 | 说明 | 可转移到 |
+|------|------|----------|
+| `pending` | 待执行 | in_progress, canceled |
+| `in_progress` | 执行中（有 lease） | completed, failed, blocked, abandoned |
+| `completed` | 已完成（终态） | - |
+| `failed` | 失败（可重试） | pending, canceled |
+| `blocked` | 阻塞（需人工） | pending, canceled |
+| `abandoned` | 放弃（lease 过期） | pending, canceled |
+| `canceled` | 取消（终态） | - |
+
+### 状态转移规则
+
+| 转移 | 触发条件 | 守卫条件 |
+|------|----------|----------|
+| pending → in_progress | 父进程领取 | 依赖已完成，无有效 lease |
+| in_progress → completed | 子进程成功 | verify.exit_code == 0，run_id 匹配 |
+| in_progress → failed | 子进程失败 | run_id 匹配 |
+| in_progress → blocked | 需要人工 | run_id 匹配 |
+| in_progress → abandoned | lease 过期 | 父进程回收 |
+| failed → pending | 重试 | attempt < max_attempts |
+| blocked → pending | 人工解决后 | 手动修改 |
+| abandoned → pending | 自动重试 | attempt < max_attempts |
+
+### 不变式（必须满足）
+
+1. **completed 必须有 verify 证据**：verify.exit_code == 0
+2. **同一时间最多一个有效 lease**：防止双重执行
+3. **子进程回传 run_id 必须匹配**：防止任务漂移
+4. **父进程独占调度权**：子进程不可自选任务
+
+---
+
+## Task.json 格式（v2.0）
+
+```json
+{
+  "version": "2.0",
+  "last_modified": "ISO时间戳",
+  "config": {
+    "lease_ttl_seconds": 900,
+    "max_attempts": 3,
+    "verify_required": true
+  },
+  "tasks": [{
+    "id": "task-001",
+    "description": "任务描述",
+    "status": "pending|in_progress|completed|failed|blocked|canceled|abandoned",
+    "depends_on": [],
+    "claim": {
+      "claimed_by": "runner-pid-12345",
+      "run_id": "run-20250213-151000-abc123",
+      "claimed_at": "ISO时间",
+      "lease_expires_at": "ISO时间",
+      "attempt": 1
+    },
+    "result": {
+      "verify": { "command": "...", "exit_code": 0, "evidence": "..." },
+      "git": { "commit": "abc123", "branch": "main" },
+      "summary": "..."
+    },
+    "history": [{ "attempt": 1, "run_id": "...", "status": "failed", "error": "..." }],
+    "notes": ""
+  }]
+}
 ```
 
 ---
@@ -48,38 +126,9 @@ your-project/
 
 1. 分析需求，拆分成 5-15 个独立任务
 2. 每个任务应该能在 15-30 分钟内完成
-3. 创建/更新当前目录的 Task.json
+3. 创建/更新当前目录的 Task.json（使用 v2.0 schema）
 4. 设置合理的依赖关系（depends_on）
 5. 询问用户是否开始执行
-
----
-
-## Task.json 格式
-
-```json
-{
-  "project": "项目名称",
-  "version": "1.0",
-  "last_modified": "ISO时间戳",
-  "tasks": [
-    {
-      "id": "task-001",
-      "description": "任务描述",
-      "status": "pending|in_progress|completed|failed|blocked",
-      "last_update": "ISO时间戳",
-      "depends_on": ["task-xxx"],
-      "notes": "执行备注"
-    }
-  ]
-}
-```
-
-### 状态说明
-- `pending`: 待执行
-- `in_progress`: 执行中
-- `completed`: 已完成
-- `failed`: 失败（可重试）
-- `blocked`: 阻塞（需人工介入）
 
 ---
 
@@ -102,15 +151,173 @@ your-project/
 
 当遇到以下情况时，将任务标记为 `blocked` 并停止：
 - 缺少 API Key 或凭证
-- 连续 3 次尝试失败
+- 连续 3 次尝试失败（超过 max_attempts）
 - 需要用户做决策
 
-在 progress.txt 中记录详细的求助信息。
+在 progress.txt 中记录 Human Help Packet。
+
+---
+
+## progress.txt 日志模板
+
+```
+============================================================
+[时间] 事件类型: task_id
+运行 ID: run_id
+尝试: 1/3
+状态: pending -> in_progress
+描述: ...
+操作: 父进程领取任务，启动子进程
+
+[时间] COMPLETE: task_id
+运行 ID: run_id
+状态: in_progress -> completed
+验证命令: scripts/verify.sh
+验证结果: exit_code=0
+验证证据: All tests passed
+Git 提交: abc123
+摘要: ...
+耗时: 120.0秒
+结果: 成功
+需要人工: 否
+
+[时间] BLOCK: task_id
+运行 ID: run_id
+状态: in_progress -> blocked
+原因: 缺少 API Key
+耗时: 30.0秒
+结果: 阻塞
+下一步: 等待人工介入
+需要人工: 是
+
+--- Human Help Packet ---
+任务 ID: task-xxx
+运行 ID: run-xxx
+阻塞原因: 缺少 API Key
+请检查 progress.txt 和 Task.json 了解详情
+建议操作:
+1. 解决阻塞问题
+2. 将任务状态改为 pending 以重试
+3. 或将任务状态改为 canceled 以跳过
+--- End Packet ---
+```
+
+---
+
+## STOP/PAUSE 机制
+
+### 立即停止
+```bash
+touch STOP
+```
+创建 STOP 文件后，运行器会在当前任务完成后立即退出。
+
+### 暂停执行
+```bash
+touch PAUSE
+```
+创建 PAUSE 文件后，运行器会进入睡眠循环，每 5 秒检查一次。删除 PAUSE 文件后恢复执行。
+
+### 恢复执行
+```bash
+rm STOP   # 删除停止信号
+rm PAUSE  # 删除暂停信号
+```
 
 ---
 
 ## 文件修改规则
 
-- Task.json: 只修改单个任务的 status/notes/last_update
+- Task.json: 通过状态机更新，使用文件锁保护
 - progress.txt: 只在末尾追加，不修改历史
 - 每完成一个任务必须 git commit
+
+---
+
+## 自动化执行模式
+
+当通过 `auto_task_runner.py` 自动调用时，Claude 会在全新的隔离上下文中执行。
+
+### 自动化执行流程（v2.0）
+
+```
+1. 父进程回收过期租约
+2. 检查 STOP/PAUSE 信号
+3. 选择下一个 pending 任务（依赖已满足）
+4. 生成 run_id，领取任务（写入 claim）
+5. 启动子进程，传入 task_id + run_id
+6. 子进程执行任务，输出结果 JSON
+7. 父进程验证 run_id 匹配
+8. 父进程验证 verify.exit_code == 0
+9. 更新 Task.json 状态
+10. 写入 progress.txt 日志
+11. git commit 提交改动
+```
+
+### 子进程输出格式要求
+
+完成任务后，必须在最后输出 JSON 格式的结果（便于父进程解析）：
+
+成功时：
+```json
+{
+  "task_id": "task-xxx",
+  "run_id": "run-xxx",
+  "status": "completed",
+  "verify": {"command": "scripts/verify.sh", "exit_code": 0, "evidence": "All tests passed"},
+  "git": {"commit": "abc123"},
+  "summary": "简要说明完成了什么"
+}
+```
+
+失败时：
+```json
+{
+  "task_id": "task-xxx",
+  "run_id": "run-xxx",
+  "status": "failed",
+  "error": "失败原因",
+  "needs_human": false
+}
+```
+
+需要人工介入时：
+```json
+{
+  "task_id": "task-xxx",
+  "run_id": "run-xxx",
+  "status": "blocked",
+  "error": "阻塞原因",
+  "needs_human": true
+}
+```
+
+### 状态判断标准
+
+- `completed`: 任务目标已达成，verify.exit_code == 0
+- `failed`: 执行出错但可以重试（如网络问题、临时错误）
+- `blocked`: 需要人工介入（如缺少凭证、需要决策、连续失败）
+
+---
+
+## 使用方法
+
+```bash
+# 执行一个任务
+python auto_task_runner.py
+
+# 循环执行直到完成
+python auto_task_runner.py --loop
+
+# 执行指定数量的任务
+python auto_task_runner.py --count 5
+
+# 查看当前状态
+python auto_task_runner.py --status
+
+# 只显示下一个任务
+python auto_task_runner.py --dry-run
+
+# 回收过期租约
+python auto_task_runner.py --reclaim
+```

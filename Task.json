@@ -1,6 +1,11 @@
 {
-  "version": "1.0",
-  "last_modified": "2025-02-13T14:20:00+08:00",
+  "version": "2.0",
+  "last_modified": "2025-02-13T15:30:00+08:00",
+  "config": {
+    "lease_ttl_seconds": 900,
+    "max_attempts": 3,
+    "verify_required": true
+  },
   "tasks": [
     {
       "id": "task-001",
@@ -8,6 +13,13 @@
       "status": "completed",
       "last_update": "2025-02-13T13:25:00+08:00",
       "depends_on": [],
+      "claim": null,
+      "result": {
+        "verify": null,
+        "git": null,
+        "summary": "已创建 init.sh，包含文件检查、Git状态、安全刹车、JSON验证、任务概览功能"
+      },
+      "history": [],
       "notes": "已创建 init.sh，包含文件检查、Git状态、安全刹车、JSON验证、任务概览功能"
     },
     {
@@ -16,6 +28,13 @@
       "status": "completed",
       "last_update": "2025-02-13T13:25:00+08:00",
       "depends_on": ["task-001"],
+      "claim": null,
+      "result": {
+        "verify": null,
+        "git": null,
+        "summary": "已创建 verify.sh，包含文件存在性、JSON格式、Git状态、脚本可执行性、progress格式验证"
+      },
+      "history": [],
       "notes": "已创建 verify.sh，包含文件存在性、JSON格式、Git状态、脚本可执行性、progress格式验证"
     },
     {
@@ -24,6 +43,13 @@
       "status": "completed",
       "last_update": "2025-02-13T13:25:00+08:00",
       "depends_on": ["task-001", "task-002"],
+      "claim": null,
+      "result": {
+        "verify": null,
+        "git": null,
+        "summary": "已创建 run_forever.sh，包含主循环、STOP文件检测、阻塞任务检测、连续失败计数、信号处理"
+      },
+      "history": [],
       "notes": "已创建 run_forever.sh，包含主循环、STOP文件检测、阻塞任务检测、连续失败计数、信号处理"
     },
     {
@@ -32,6 +58,13 @@
       "status": "completed",
       "last_update": "2025-02-13T13:25:00+08:00",
       "depends_on": ["task-003"],
+      "claim": null,
+      "result": {
+        "verify": null,
+        "git": null,
+        "summary": "已创建 agent_loop.py，功能与 run_forever.sh 对等，支持崩溃恢复和信号处理"
+      },
+      "history": [],
       "notes": "已创建 agent_loop.py，功能与 run_forever.sh 对等，支持崩溃恢复和信号处理"
     },
     {
@@ -40,6 +73,13 @@
       "status": "completed",
       "last_update": "2025-02-13T13:25:00+08:00",
       "depends_on": ["task-003"],
+      "claim": null,
+      "result": {
+        "verify": null,
+        "git": null,
+        "summary": "已创建 README.md，包含快速开始、核心文件说明、工作流程、安全刹车、任务状态说明"
+      },
+      "history": [],
       "notes": "已创建 README.md，包含快速开始、核心文件说明、工作流程、安全刹车、任务状态说明"
     },
     {
@@ -48,6 +88,13 @@
       "status": "completed",
       "last_update": "2025-02-13T13:30:00+08:00",
       "depends_on": ["task-001", "task-002"],
+      "claim": null,
+      "result": {
+        "verify": null,
+        "git": {"commit": "f2f067d", "branch": "main"},
+        "summary": "完整流程验证通过"
+      },
+      "history": [],
       "notes": "完整流程验证通过，git commit f2f067d"
     },
     {
@@ -56,7 +103,74 @@
       "status": "completed",
       "last_update": "2025-02-13T14:20:00+08:00",
       "depends_on": [],
+      "claim": null,
+      "result": {
+        "verify": null,
+        "git": null,
+        "summary": "测试通过：get_next_pending_task、get_task_stats、has_blocked_tasks、get_claude_path、依赖检查均正常工作"
+      },
+      "history": [],
       "notes": "测试通过：get_next_pending_task、get_task_stats、has_blocked_tasks、get_claude_path、依赖检查均正常工作"
+    },
+    {
+      "id": "task-008",
+      "description": "创建 auto_task_runner.py 使用官方 CLI 参数实现上下文隔离",
+      "status": "completed",
+      "last_update": "2025-02-13T15:10:00+08:00",
+      "depends_on": [],
+      "claim": null,
+      "result": {
+        "verify": null,
+        "git": null,
+        "summary": "已创建，使用 --no-session-persistence、--output-format json、--max-turns 等官方参数"
+      },
+      "history": [],
+      "notes": "已创建，使用 --no-session-persistence、--output-format json、--max-turns 等官方参数"
+    },
+    {
+      "id": "task-009",
+      "description": "状态机升级：创建 lib/ 模块目录和核心组件",
+      "status": "completed",
+      "last_update": "2025-02-13T15:30:00+08:00",
+      "depends_on": [],
+      "claim": null,
+      "result": {
+        "verify": {"command": "python -c \"from lib import *\"", "exit_code": 0, "evidence": "All modules imported successfully"},
+        "git": null,
+        "summary": "已创建 lib/ 模块：file_lock.py, state_machine.py, prompts.py, progress_logger.py"
+      },
+      "history": [],
+      "notes": "已创建 lib/ 模块：file_lock.py, state_machine.py, prompts.py, progress_logger.py"
+    },
+    {
+      "id": "task-010",
+      "description": "状态机升级：重构 auto_task_runner.py 使用状态机",
+      "status": "completed",
+      "last_update": "2025-02-13T15:30:00+08:00",
+      "depends_on": ["task-009"],
+      "claim": null,
+      "result": {
+        "verify": {"command": "python auto_task_runner.py --status", "exit_code": 0, "evidence": "Status displayed correctly"},
+        "git": null,
+        "summary": "已重构 auto_task_runner.py v2.0：父进程独占调度权、文件锁、租约机制、verify gate"
+      },
+      "history": [],
+      "notes": "已重构 auto_task_runner.py v2.0：父进程独占调度权、文件锁、租约机制、verify gate"
+    },
+    {
+      "id": "task-011",
+      "description": "状态机升级：升级 Task.json 到 v2.0 schema",
+      "status": "completed",
+      "last_update": "2025-02-13T15:30:00+08:00",
+      "depends_on": ["task-009"],
+      "claim": null,
+      "result": {
+        "verify": {"command": "python -c \"import json; json.load(open('Task.json'))\"", "exit_code": 0, "evidence": "JSON valid"},
+        "git": null,
+        "summary": "已升级 Task.json 到 v2.0：添加 config、claim、result、history 字段"
+      },
+      "history": [],
+      "notes": "已升级 Task.json 到 v2.0：添加 config、claim、result、history 字段"
     }
   ]
 }
