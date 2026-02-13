@@ -212,3 +212,53 @@ tail -50 runner.log
 4. **及时提交**：每完成一个任务就 commit，保持可回滚
 5. **日志详细**：在 progress.txt 中记录足够的上下文
 6. **租约管理**：定期运行 `--reclaim` 回收过期租约
+
+## 运行验收测试
+
+```bash
+# 验证状态机模块
+python -c "from lib.state_machine import *; print('State machine OK')"
+
+# 验证文件锁模块
+python -c "from lib.file_lock import *; print('File lock OK')"
+
+# 查看当前状态
+python auto_task_runner.py --status
+
+# 回收过期租约
+python auto_task_runner.py --reclaim
+```
+
+## 查看 runs/ 归档
+
+每次任务执行的原始输出都会保存到 `runs/` 目录：
+
+```bash
+# 列出所有归档
+ls runs/
+
+# 查看特定运行的输出
+cat runs/run-20250213-160000-abc123.json | python -m json.tool
+```
+
+归档内容包括：
+- `run_id`: 运行 ID
+- `timestamp`: 时间戳
+- `stdout`: 标准输出
+- `stderr`: 标准错误
+- `parsed_result`: 解析的结果 JSON
+
+## 处理 blocked 任务 (Human Help Packet)
+
+当任务状态变为 `blocked` 时：
+
+1. 查看 `progress.txt` 中的 "Human Help Packet"
+2. 检查 `runs/{run_id}.json` 获取详细输出
+3. 根据阻塞原因采取行动：
+   - 缺少凭证：配置环境变量后重试
+   - 需要决策：做出决策后修改任务
+   - 连续失败：分析原因后修复
+4. 修改 Task.json 中的任务状态：
+   - 改为 `pending` 以重试
+   - 改为 `canceled` 以跳过
+5. 删除 STOP 文件（如果存在）继续运行

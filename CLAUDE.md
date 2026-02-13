@@ -321,3 +321,61 @@ python auto_task_runner.py --dry-run
 # 回收过期租约
 python auto_task_runner.py --reclaim
 ```
+
+---
+
+## 故障注入验收清单
+
+以下 6 个用例必须全部通过才能认为系统可靠：
+
+| 用例 | 测试内容 | 预期结果 |
+|------|----------|----------|
+| A | 强杀子进程/中断 | Task.json 不损坏，lease 过期后回收 |
+| B | verify 失败 | 任务不会 completed，记录 exit_code |
+| C | 子进程输出非法 JSON | 父进程不崩溃，任务进入 failed |
+| D | 双开 runner | 不会双领/双写，第二实例等待 |
+| E | STOP/PAUSE | 可控停机，progress 记录事件 |
+| F | run_id mismatch | 硬拒绝 completed，生成 help packet |
+
+运行验收测试：
+```bash
+python -c "from lib.state_machine import *; print('State machine OK')"
+python auto_task_runner.py --status
+python auto_task_runner.py --reclaim
+```
+
+---
+
+## run_id mismatch 处理规则
+
+当子进程返回的 run_id 与 claim.run_id 不匹配时：
+
+1. **硬拒绝**：不接受任何状态更新
+2. **标记失败**：任务状态改为 failed
+3. **生成 Human Help Packet**：
+   - 记录期望的 run_id 和实际的 run_id
+   - 写入 progress.txt
+   - 可能原因：子进程漂移、重放攻击、并发冲突
+4. **归档证据**：原始输出保存到 runs/{run_id}.json
+
+---
+
+## 租约 TTL 配置建议
+
+- `lease_ttl_seconds` 应大于 `timeout`
+- 推荐：`lease_ttl_seconds = timeout * 1.5`
+- 默认值：900 秒（15 分钟）
+- 如果任务可能超过 15 分钟，请调整配置
+
+---
+
+## 提交时机规范
+
+子进程必须遵守以下顺序：
+
+1. 实现任务
+2. 运行 verify（scripts/verify.sh）
+3. **只有 verify 通过（exit_code=0）才能 git commit**
+4. 输出结果 JSON
+
+父进程会验证 verify.exit_code，如果不为 0 则拒绝 completed 状态。
