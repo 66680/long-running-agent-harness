@@ -6,41 +6,40 @@
 
 ### 方式一：手动会话循环（推荐新手）
 
-1. 打开 Claude Code，进入项目目录
-2. 告诉 Claude 你的需求，让它帮你拆分任务到 `Task.json`
-3. 每次新会话，Claude 会自动：
-   - 读取进度文件
-   - 领取一个任务
-   - 实现并验证
-   - 提交代码
+每次新会话时说 "继续" 或 "开始执行"，Claude 会自动领取并执行下一个任务。
+
+### 方式二：后台自动执行 + 前台交互（推荐）
+
+**同时运行两个终端：**
 
 ```bash
-# 示例对话
-你: "我要做一个博客系统，帮我拆分任务"
-Claude: [创建 Task.json，包含多个任务]
+# 终端 1：启动后台执行器
+python background_agent.py start
 
-你: "开始执行"
-Claude: [领取 task-001，实现，验证，提交]
-
-# 下次会话
-你: "继续"
-Claude: [自动读取进度，领取下一个任务...]
+# 终端 2：正常使用 Claude Code
+claude
+# 你可以继续使用 /commit, /review-pr 等 skills
 ```
 
-### 方式二：自动化循环（需要 Claude Code CLI）
+**控制命令：**
+```bash
+python background_agent.py status   # 查看状态
+python background_agent.py pause    # 暂停
+python background_agent.py resume   # 恢复
+python background_agent.py stop     # 停止
+```
+
+### 方式三：完全自动化（无人值守）
 
 ```bash
-# 1. 安装 Claude Code CLI
-npm install -g @anthropic-ai/claude-code
+# 后台运行，输出到日志文件
+nohup python background_agent.py start > agent.log 2>&1 &
 
-# 2. 登录
-claude login
+# 查看日志
+tail -f agent.log
 
-# 3. 运行自动化脚本
-python claude_runner.py
-
-# 4. 停止
-touch STOP
+# 停止
+python background_agent.py stop
 ```
 
 ## 如何拆分任务
